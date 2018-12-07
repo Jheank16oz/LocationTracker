@@ -1,0 +1,60 @@
+package com.jheank16oz.locationtracker
+
+import android.app.Notification
+import android.app.Notification.PRIORITY_MIN
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.arch.persistence.room.Room
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import android.support.annotation.RequiresApi
+import android.support.v4.app.NotificationCompat
+
+
+class MyForeGroundService : Service() {
+
+    private val ID_SERVICE = 101
+    override fun onBind(intent: Intent): IBinder? {
+        // TODO: Return the communication channel to the service.
+        throw UnsupportedOperationException("Not yet implemented")
+    }
+
+
+
+    override fun onCreate() {
+        super.onCreate()
+
+        // do stuff like register for BroadcastReceiver, etc.
+
+        // Create the Foreground Service
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) createNotificationChannel(notificationManager) else ""
+        val notificationBuilder = NotificationCompat.Builder(this, channelId)
+
+        val notification = notificationBuilder.setOngoing(true)
+                .setSmallIcon(R.drawable.ic_mtrl_chip_checked_circle)
+                .setColor(resources.getColor(R.color.colorPrimary))
+                .setContentTitle("Prueba 1")
+                .setContentText("Hay una asistencia e proceso")
+                .setPriority(PRIORITY_MIN)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .build()
+
+        startForeground(ID_SERVICE, notification)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createNotificationChannel(notificationManager: NotificationManager): String {
+        val channelId = "my_service_channelid"
+        val channelName = "My Foreground Service"
+        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
+        // omitted the LED color
+        channel.importance = NotificationManager.IMPORTANCE_NONE
+        channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        notificationManager.createNotificationChannel(channel)
+        return channelId
+    }
+}
