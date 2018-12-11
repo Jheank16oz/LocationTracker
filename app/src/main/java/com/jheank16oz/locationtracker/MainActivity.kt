@@ -3,11 +3,14 @@ package com.jheank16oz.locationtracker
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.arch.persistence.room.Room
+import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -29,11 +32,11 @@ import com.google.firebase.firestore.FirebaseFirestoreSettings
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.fragment_main.*
 import java.util.*
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = MainActivity::class.java.simpleName
 
     /**
      * Code used in requesting runtime permissions.
@@ -91,26 +94,28 @@ class MainActivity : AppCompatActivity() {
     /**
      * Time when the location was updated represented as a String.
      */
-    private var mLastUpdateTime: Date? = null
     private var mTimer: CountDownTimer? = null
 
 
     private var mDocRef:CollectionReference? = null
-    private val id = 7
-    private lateinit var db:AppDatabase;
+    private lateinit var db:AppDatabase
+    private var started =  false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setSupportActionBar(toolbar)
 
-        fab.setOnClickListener { view ->
-            if (mRequestingLocationUpdates != true) {
+        fab.setOnClickListener { _ ->
+            if (!started) {
+                started = true
                 startLocationUpdates()
                 Toast.makeText(this,"start",Toast.LENGTH_SHORT).show()
+                fab.setImageDrawable(resources.getDrawable(android.R.drawable.ic_media_pause))
+                mTimer?.start()
             }else{
-                stopLocationUpdates()
-                Toast.makeText(this,"stop",Toast.LENGTH_SHORT).show()
+               stopUpdates()
+
             }
         }
         db = Room.databaseBuilder(
@@ -120,17 +125,54 @@ class MainActivity : AppCompatActivity() {
 
         load.setOnClickListener {
             Thread(Runnable {
-                val list = db.userDao().getAll()
+                val list:List<com.jheank16oz.locationtracker.Location> = db.userDao().getAll()
                 runOnUiThread {
                     locationText.text = list.toString()
                 }
 
 
             }).start()
+        }
 
+        map.setOnClickListener { _ ->
+            Thread(Runnable {
+                val list = db.userDao().getAll()
+                if (list.isNotEmpty()) {
+                    val i = Intent(this, MapsActivity::class.java).also {
+                        it.putParcelableArrayListExtra(MapsActivity.LOCATIONS_KEY, ArrayList(list))
+                    }
+                    startActivity(i)
+                }else{
+                    runOnUiThread {
+                        Toast.makeText(baseContext,"No se tienen ubicaciones",Toast.LENGTH_SHORT).show()
+
+                    }
+                }
+
+
+            }).start()
 
         }
 
+        delete.setOnClickListener{ it ->
+
+            AlertDialog.Builder(this)
+                    .setCancelable(false)
+                    .setTitle("¿Eliminar todo?")
+                    .setMessage("Esta apunto de eliminar todo")
+                    .setPositiveButton("eliminar") { p0, p1 ->
+                        Thread(Runnable {
+                            db.userDao().clearAll()
+                            runOnUiThread {
+                                locationText.text = ""
+                                Toast.makeText(baseContext,"Eliminado.",Toast.LENGTH_SHORT).show()
+                            }
+                        }).start()
+                    }.setNegativeButton("cancelar") { _, _ ->
+                        // ignored
+                    }.show()
+
+        }
 
         val settings = FirebaseFirestoreSettings.Builder()
                 .setTimestampsInSnapshotsEnabled(true)
@@ -148,10 +190,20 @@ class MainActivity : AppCompatActivity() {
         createLocationRequest()
         buildLocationSettingsRequest()
 
-
+        load.callOnClick()
     }
 
+    private fun stopUpdates() {
+        started = false
+        stopForegroundService()
+        stopLocationUpdates()
+        mTimer?.cancel()
 
+        fab.setImageDrawable(resources.getDrawable(android.R.drawable.ic_media_play))
+
+        Toast.makeText(this,"stop",Toast.LENGTH_SHORT).show()
+
+    }
 
 
     /**
@@ -195,7 +247,6 @@ class MainActivity : AppCompatActivity() {
                 super.onLocationResult(locationResult)
 
                 mCurrentLocation = locationResult?.lastLocation
-                mLastUpdateTime = Date()
                 updateLocationUI()
             }
         }
@@ -285,6 +336,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun stopForegroundService(){
+        val stopIntent = Intent(this@MainActivity, MyForeGroundService::class.java)
+        stopIntent.action = MyForeGroundService.STOPFOREGROUND_ACTION
+        startService(stopIntent)
+
+    }
+
     /**
      * Updates all UI fields.
      */
@@ -296,7 +354,7 @@ class MainActivity : AppCompatActivity() {
      * Sets the value of the UI fields for the location latitude, longitude and last update time.
      */
     private fun updateLocationUI() {
-        if (mCurrentLocation != null && mLastUpdateTime != null) {
+        if (mCurrentLocation != null && mRequestingLocationUpdates == true) {
 
 
 
@@ -321,6 +379,7 @@ class MainActivity : AppCompatActivity() {
                 ?.addOnCompleteListener(this) {
                     mRequestingLocationUpdates = false
                 }
+
     }
 
     public override fun onResume() {
@@ -328,7 +387,7 @@ class MainActivity : AppCompatActivity() {
         // Within {@code onPause()}, we remove location updates. Here, we resume receiving
         // location updates if the user has requested them.
 
-        if (mRequestingLocationUpdates == true && checkPermissions()) {
+        if ( mRequestingLocationUpdates == true && checkPermissions()) {
             startLocationUpdates()
         } else if (!checkPermissions()) {
             requestPermissions()
@@ -397,6 +456,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        stopUpdates()
+
+    }
+
     /**
      * Callback received when a permissions request has been completed.
      */
@@ -440,16 +505,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    companion object {
-        const val LATLNG_KEY = "latlng"
-        const val LONG_KEY = "latlng"
-        const val DATETIME_KEY = "datetime"
-        const val REQUEST_KEY = "bytime"
-    }
-
     private fun createChronometer(time: Long) {
 
         if(mTimer == null) {
+            Log.e("created", "****")
             mTimer = object : CountDownTimer(time, 1000) {
 
                 override fun onTick(millisUntilFinished: Long) {
@@ -471,42 +530,37 @@ class MainActivity : AppCompatActivity() {
 
 
                 }
-            }.start()
+            }
         }
 
     }
 
-    fun save(location: com.jheank16oz.locationtracker.Location){
+    fun save(location: com.jheank16oz.locationtracker.Location?){
         mTimer?.cancel()
         mTimer?.start()
 
+        if (location == null){
+            validateGps()
+            return
+        }
         Thread(Runnable {
             db.userDao().insert(location)
+            runOnUiThread {
+                locationText?.let {
+                    val text = location.toString() + (it.text.toString())
+                    it.text = text
+                }
+            }
         }).start()
-
-
-        /*mDocRef?.add(dataToSave)
-                ?.addOnFailureListener {
-                    Log.d(TAG,"failure" + it.message)
-
-                }
-                ?.addOnSuccessListener {
-                    Log.d(TAG,"Document has been saved")
-                }
-                ?.addOnCanceledListener {
-                    Log.w(TAG,"Document was no save")
-
-                }?.addOnCompleteListener {
-                    Log.d(TAG,"completed")
-
-                }
-                */
-
-
     }
 
+    private fun validateGps(){
+        val manager: LocationManager =  getSystemService( Context.LOCATION_SERVICE ) as LocationManager
 
-
+        if (!manager.isProviderEnabled( LocationManager.GPS_PROVIDER ) ) {
+            Toast.makeText(this,"Encienda el gps", Toast.LENGTH_SHORT).show()
+        }
+    }
 
 
 }

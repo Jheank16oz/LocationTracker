@@ -11,7 +11,7 @@ import android.arch.persistence.room.Query
  */
 @Dao
 interface UserDao {
-    @Query("SELECT * FROM location")
+    @Query("SELECT * FROM location ORDER BY uid DESC")
     fun getAll(): List<Location>
 
     @Query("SELECT * FROM location WHERE uid IN (:userIds)")
@@ -25,4 +25,7 @@ interface UserDao {
 
     @Delete
     fun delete(user: Location)
+
+    @Query("DELETE FROM location")
+    fun clearAll()
 }

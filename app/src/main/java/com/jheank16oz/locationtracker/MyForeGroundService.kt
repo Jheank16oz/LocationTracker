@@ -1,17 +1,13 @@
 package com.jheank16oz.locationtracker
 
-import android.app.Notification
-import android.app.Notification.PRIORITY_MIN
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
-import android.arch.persistence.room.Room
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.support.annotation.RequiresApi
 import android.support.v4.app.NotificationCompat
+import android.util.Log
 
 
 class MyForeGroundService : Service() {
@@ -34,17 +30,31 @@ class MyForeGroundService : Service() {
         val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) createNotificationChannel(notificationManager) else ""
         val notificationBuilder = NotificationCompat.Builder(this, channelId)
 
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+
+
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(this, 0, intent, 0)
+        val style = NotificationCompat.EXTRA_MEDIA_SESSION
+
+
         val notification = notificationBuilder.setOngoing(true)
                 .setSmallIcon(R.drawable.ic_mtrl_chip_checked_circle)
                 .setColor(resources.getColor(R.color.colorPrimary))
-                .setContentTitle("Prueba 1")
+                .setContentTitle("Asistencia")
                 .setContentText("Hay una asistencia e proceso")
-                .setPriority(PRIORITY_MIN)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setContentIntent(pendingIntent)
                 .build()
 
         startForeground(ID_SERVICE, notification)
     }
+
+
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(notificationManager: NotificationManager): String {
@@ -56,5 +66,25 @@ class MyForeGroundService : Service() {
         channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         notificationManager.createNotificationChannel(channel)
         return channelId
+    }
+
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
+        if (intent.action == STARTFOREGROUND_ACTION) {
+            Log.i(TAG, "Received Start Foreground Intent ")
+            // your start service code
+        } else if (intent.action == STOPFOREGROUND_ACTION) {
+            Log.i(TAG, "Received Stop Foreground Intent")
+            //your end servce code
+            stopForeground(true)
+            stopSelf()
+        }
+        return Service.START_STICKY
+    }
+
+    companion object {
+        const val STARTFOREGROUND_ACTION = "start"
+        const val STOPFOREGROUND_ACTION = "stop"
+        const val TAG  = "Service"
+
     }
 }
